@@ -1,0 +1,13 @@
+{
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@srcds/log-receiver": "^0.1.1",
+    "discord.js": "^14.19.3",
+    "rcon": "^1.1.0",
+    "source-server-query": "^3.0.3"
+  }
+}
