@@ -24,6 +24,7 @@ SOFTWARE.
 
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { SrcdsLogReceiver } from '@srcds/log-receiver';
+import query from 'source-server-query';
 import Rcon from 'rcon';
 const config = await import('./config.cjs'); 
 const relayCommand = 'say_relay';
@@ -88,6 +89,17 @@ function utf8ToBase64(str) {
 	const utf8Bytes = new TextEncoder().encode(str);
 	const binaryStr = String.fromCharCode(...utf8Bytes);
 	return btoa(binaryStr);
+}
+
+// Creates a hh:mm:ss format out of seconds.
+function formatSecondsToHHMMSS(totalSeconds) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const pad = (n) => String(n).padStart(2, '0');
+
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 // Creates a short hash from a string. Used as chunk identifiers if a discord message exceeds 500 bytes.
@@ -198,7 +210,68 @@ async function fetchChannelWebhooks(channel) {
 	}
 }
 
-// Assigns an existing webhook or creates a new one if it doesn't exists.
+// Generates and returns the string that will be used for the status message.
+async function generateStatusMessage() {
+	let completeMessage = '';
+	let serverMessage;
+	debugLog("[STATUS] Fetching servers info.");
+	for (const server of Object.values(config.Servers)) {
+		const { ip,publicip,port } = server;
+		serverMessage='';
+		try{
+			const info = await query.info(ip, port, 1000);
+			let players = await query.players(ip, port, 1000);
+			const maxUsernameLength = 22; // this prevents word wrap on mobile.
+			const joiningPlayerUsername = 'JoiningPlayer';
+			let playersTable = '';
+			const separator = '|';
+			
+			serverMessage = `**${info.name}**
+			[${publicip}:${port}](https://vauff.com/connect.php?ip=${publicip}:${port})
+			**${info.players}** ${info.players == 1 ? 'person is' : 'people are'} playing on map **${info.map}**`.replace(/^\t+/gm, '');
+			
+			if(info.players == 0){
+				serverMessage=serverMessage+'\n\n';
+				completeMessage = completeMessage+serverMessage;
+				debugLog("[STATUS] Fetched server info.");
+				continue;
+			}
+			
+			// replaces empty strings with 'JoiningPlayer'.
+			players=players.map(e => ({ ...e, name: e.name ? e.name : joiningPlayerUsername }));
+			
+			let longestUsernameLength = Math.max(...players.map(player => player.name.length))+1;
+			
+			if(longestUsernameLength>maxUsernameLength)
+				longestUsernameLength=maxUsernameLength;
+			
+			for (const ply of Object.values(players)) {
+				const { name,duration } = ply;
+				let paddedName;
+				if(name.length >= longestUsernameLength){
+					paddedName=name.substring(0,longestUsernameLength-1)+' ';
+				}else{
+					paddedName=name.padEnd(longestUsernameLength);
+				}
+				const formattedDuration = ' '+formatSecondsToHHMMSS(parseInt(duration));
+				playersTable = playersTable+paddedName+separator+formattedDuration+'\n';
+			}
+			
+			serverMessage = serverMessage+'\n```'+playersTable.trimEnd()+'```\n\n';
+			
+			completeMessage = completeMessage+serverMessage;
+			
+			debugLog("[STATUS] Fetched server info.");
+		}catch(err){
+			debugLog("[STATUS] Failed to fetch server info.");
+			console.error(err);
+		}
+	}
+	debugLog("[STATUS] Fetched all servers info.\n\n");
+	return completeMessage;
+}
+
+// Creates/Assigns the status message.
 async function fetchStatusChannel(channel,botid) {
 	debugLog('\n[STATUS] Retrieving existing status message: '+channel.name+'.');
 	try {
@@ -234,6 +307,19 @@ client.once(Events.ClientReady, async readyClient => {
 	if(config.StatusChannelID.length >= 16) {
 		const channel = client.channels.cache.get(config.StatusChannelID);
 		statusMessage = await fetchStatusChannel(channel,readyClient.user.id);
+		
+		const statustext = await generateStatusMessage();
+		statusMessage.edit(statustext);
+		debugLog("[STATUS] Status message updated.")
+		setInterval( async () => {
+			if(!statusMessage){
+				debugLog("[STATUS] Status message not found.");
+				return;
+			}
+			const statustext = await generateStatusMessage();
+			statusMessage.edit(statustext);
+			debugLog("[STATUS] Status message updated.")
+		},config.StatusRefreshTime*1000);
 	}
 	
 	console.log(`Bot started. Logged in as ${readyClient.user.tag}`);
