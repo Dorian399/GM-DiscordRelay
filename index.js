@@ -365,56 +365,49 @@ receiver.on('log', async (log) => {
 	}
 	const channelID = serverChannelIDs[ip_and_port];
 	const message = log.payload;
-	const matched_message = message.match(/<[0-9]+><STEAM_[0-5]:[01]:\d+><Team>" (say|say_team) "/);
-	if(!matched_message){
-		// Lua errors.
+	let username = '';
+	let content = '';
+	let steamid = '';
+	const chatlog_match = message.match(/<[0-9]+><STEAM_[0-5]:[01]:\d+><Team>" (say|say_team) "/);
+	const luaerror_match = message.match(/^(?:\d{2}\/\d{2}\/\d{4} - \d{2}:\d{2}:\d{2}: )(Lua Error:\s*\n\[ERROR\][\s\S]*)$/m);
+	
+	if(chatlog_match){ // Chat messages.
+	
+		const content_match = message.match(/^.*?"[^"]*<\d+><STEAM_0:[01]:\d+><[^>]+>"\s+say(?:_team)?\s+"(.*)"/);
+		if(!content_match || !content_match[1]){
+			debugLog('[LOG] Chatlog invalid, skipping.\n');
+			return;
+		}
+		username = message.match(/^.*?"(.*?)<\d+><STEAM_0:[01]:\d+><.*?>"/)[1];
+		steamid = message.match(/STEAM_[0-5]:[01]:\d+/)[0].replace('<','').replace('>','');
+		content = content_match[1].replace('@','@ ');
+		
+	}else if(luaerror_match){ // Lua errors.
+	
 		if(!config.ShowLuaErrors)
 			return;
-		const regex = /^(?:\d{2}\/\d{2}\/\d{4} - \d{2}:\d{2}:\d{2}: )(Lua Error:\s*\n\[ERROR\][\s\S]*)$/m;
-		const matched_luaerror = message.match(regex);
-		if(!matched_luaerror){
-			debugLog('[LOG] Log does not match any of the criteria, skipping.\n');
-			return;
-		}
-		debugLog('[LOG] Log is a Lua error.');
-		const channel = client.channels.cache.get(channelID);
-		const webhook = relayWebhooks[channelID];
-		if(!webhook){
-			debugLog('[LOG] Webhook not found or invalid, skipping.\n');
-			return;
-		}
-		try{
-			debugLog('[LOG] Sending Lua error to the webhook.\n');
-			webhook.send({
-				content: matched_luaerror[1],
-				username: 'Lua Error',
-			});
-		}catch(error){
-			console.error(error);
-		}
+		debugLog('[LOG] Log is a lua error.');
+		username = 'Lua Error';
+		content = luaerror_match[1];
+		
+	}else{ // Does not match anything.
+	
+		debugLog('[LOG] Log does not match any of the criteria, skipping.\n');
 		return;
-	}else{
-		debugLog('[LOG] Log is a chatlog.');
 	}
-	// Chat messages.
 	const channel = client.channels.cache.get(channelID);
-	const steamid = message.match(/STEAM_[0-5]:[01]:\d+/)[0].replace('<','').replace('>','');
-	const username = message.match(/^.*?"(.*?)<\d+><STEAM_0:[01]:\d+><.*?>"/)[1];
-	const content_match = message.match(/^.*?"[^"]*<\d+><STEAM_0:[01]:\d+><[^>]+>"\s+say(?:_team)?\s+"(.*)"/);
-	if(!content_match || !content_match[1]){
-		debugLog('[LOG] Chatlog invalid, skipping.\n');
-		return;
-	}
-	const content = content_match[1].replace('@','@ ');
 	if(channel){
-		const avatar = await fetchAvatarUrl(steamid);
+		let avatar;
+		if(steamid.length > 0){
+			avatar = await fetchAvatarUrl(steamid);
+		}
 		const webhook = relayWebhooks[channelID];
 		if(!webhook){
 			debugLog('[LOG] Webhook not found or invalid, skipping.\n');
 			return;
 		}
 		try{
-			debugLog('[LOG] Sending chatlog to webhook.');
+			debugLog('[LOG] Sending message to webhook.');
 			webhook.send({
 				content: content,
 				username: username,
@@ -428,7 +421,7 @@ receiver.on('log', async (log) => {
 				avatarURL: avatar,
 			});
 		}
-		debugLog('[LOG] Chatlog sent.\n');
+		debugLog('[LOG] Message sent.\n');
 	}else{
 		debugLog('[LOG] Invalid channelID, skipping.\n');
 	}
@@ -495,6 +488,7 @@ client.on(Events.MessageCreate, async message => {
 		const command = relayCommand+' '+usernameb64+' '+contentb64;
 		debugLog('[MESSAGE] Sending message to the server.');
 		const result = await sendRCON(ip,port,pass,command);
+		
 		if( result.length>0 && result.toLowerCase().includes('error') ){
 			debugLog('[MESSAGE] Server errored or has not responded.\n');
 			message.react('❌');
@@ -505,22 +499,26 @@ client.on(Events.MessageCreate, async message => {
 		debugLog('[MESSAGE] Message does not fit into a single request, chunking.');
 		const chunkSize = 500 - (relayCommand.length+2+messageHash.length);
 		const requestsAmount = Math.ceil(contentb64.length / chunkSize);
+		
 		// First request acts as a starting point with the username and an unique hash.
 		const firstRequest_command = relayCommand+' 0 '+requestsAmount+' '+messageHash+' '+usernameb64;
 		debugLog('[MESSAGE] Sending message chunks to the server.');
 		const firstRequest = await sendRCON(ip,port,pass,firstRequest_command);
 		debugLog('[MESSAGE] Chunk 0 sent.');
+		
 		if( firstRequest.length>0 && firstRequest.toLowerCase().includes('error') ){
 			debugLog('[MESSAGE] Server errored or has not responded.\n');
 			message.react('❌');
 			return;
 		}
+		
 		for(let i=1;i<=requestsAmount;i++){
 			const chunk = contentb64.substring((i-1)*chunkSize,i*chunkSize);
 			const command = relayCommand+' '+i+' '+messageHash+' '+chunk;
 			await sendRCON(ip,port,pass,command);
 			debugLog('[MESSAGE] Chunk '+i+' sent.');
 		}
+		
 		debugLog('[MESSAGE] All chunks have been sent.\n');
 	}
 });
