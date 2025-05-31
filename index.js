@@ -32,13 +32,13 @@ const relayCommand = 'say_relay';
 
 // Specifies the users that can use commands.
 let usersWhitelist = {};
-for (var key in config.AllowedForRCON) {
+for (const key in config.AllowedForRCON) {
 	usersWhitelist[config.AllowedForRCON[key]] = true;
 }
 
 // Specifies the channel id's relations to specific servers for fast lookup when relaying messages and rcon commands.
 let serverChannelIDs = {};
-for (var key in config.Servers) {
+for (const key in config.Servers) {
 	const ip_and_port = config.Servers[key].ip + ':' + config.Servers[key].port
 	serverChannelIDs[ip_and_port] = config.Servers[key].relaychannel;
 	serverChannelIDs[config.Servers[key].relaychannel] = {ip: config.Servers[key].ip,port: config.Servers[key].port,password: config.Servers[key].password};
@@ -58,7 +58,7 @@ const receiver = new SrcdsLogReceiver({
 
 // Add servers to log whitelist
 let serversToAdd = []
-for(var key in config.Servers){
+for(const key in config.Servers){
 	serversToAdd.push({hostname:config.Servers[key].ip, port:config.Servers[key].port});
 }
 receiver.addServers(serversToAdd);
@@ -176,26 +176,40 @@ async function fetchAvatarUrl(steamid) {
 		return avatarCache[steamid];
 	}
 	debugLog('[AVATAR] Requesting from API.');
-	const steamidsplit = steamid.split(':');
-	const X = parseInt(steamidsplit[0].replace('STEAM_', ''));
-	const Y = parseInt(steamidsplit[1]);
-	const Z = parseInt(steamidsplit[2]);
-	const V = BigInt('76561197960265728');
-	const steamid64 = (BigInt(Z) * 2n + BigInt(Y) + V).toString();
-	let res = await fetch(`http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${config.SteamAPIKey}&steamids=${steamid64}`);
-	let data = await res.json();
-	avatarCache[steamid]=data.response.players[0].avatarfull;
-	debugLog('[AVATAR] Avatar fetched successfully.\n');
-	return avatarCache[steamid];
+	try{
+		const steamidsplit = steamid.split(':');
+		const X = parseInt(steamidsplit[0].replace('STEAM_', ''));
+		const Y = parseInt(steamidsplit[1]);
+		const Z = parseInt(steamidsplit[2]);
+		const V = BigInt('76561197960265728');
+		const steamid64 = (BigInt(Z) * 2n + BigInt(Y) + V).toString();
+		let res = await fetch(`http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${config.SteamAPIKey}&steamids=${steamid64}`);
+		if (!res.ok) {
+			debugLog('[AVATAR] Avatar fetch failed.\n');
+			debugLog(res);
+			return;
+		}
+		let data = await res.json();
+		avatarCache[steamid]=data.response.players[0].avatarfull;
+		debugLog('[AVATAR] Avatar fetched successfully.\n');
+		return avatarCache[steamid];
+	}catch(err){
+		debugLog('[AVATAR] Avatar fetch failed.');
+		console.error(err);
+	}
 }
 
 
 // Assigns an existing webhook or creates a new one if it doesn't exists.
-async function fetchChannelWebhooks(channel) {
+async function fetchChannelWebhooks(channel,botid) {
+	if(!channel){
+		debugLog("\n[WEBHOOK] Invalid relay channel.");
+		return;
+	}
 	debugLog('\n[WEBHOOK] Retrieving webhook for channel: '+channel.name+'.');
 	try {
 		const hooks = await channel.fetchWebhooks();
-		let webhook = hooks.find(hook => hook.name === 'srcds_chat_relay');
+		let webhook = hooks.find(hook => hook.name == 'srcds_chat_relay' && hook.owner.id == botid);
 		if(!webhook){
 			debugLog('[WEBHOOK] Webhook not found, creating a new one.\n');
 			webhook = await channel.createWebhook({
@@ -267,12 +281,20 @@ async function generateStatusMessage() {
 			console.error(err);
 		}
 	}
+	if(completeMessage.length == 0) {
+		debugLog("[STATUS] servers appears to be offline.\n\n");
+		completeMessage = 'Server is offline.';
+	};
 	debugLog("[STATUS] Fetched all servers info.\n\n");
 	return completeMessage;
 }
 
 // Creates/Assigns the status message.
 async function fetchStatusChannel(channel,botid) {
+	if(!channel){
+		debugLog('\n[STATUS] Invalid channel ID.\n');
+		return;
+	}
 	debugLog('\n[STATUS] Retrieving existing status message: '+channel.name+'.');
 	try {
 		const messages = await channel.messages.fetch({ limit: 100 });
@@ -295,31 +317,38 @@ let relayWebhooks = {};
 let statusMessage;
 client.once(Events.ClientReady, async readyClient => {
 	// Prepare webhooks.
-	for(var key in config.Servers){
+	for(const key in config.Servers){
 		const channel = client.channels.cache.get(config.Servers[key].relaychannel);
-		if(!channel)
+		if(!channel){
+			debugLog("\n[WEBHOOK] Invalid relay channel id: "+config.Servers[key].relaychannel+'.');
 			continue;
-		const webhook = await fetchChannelWebhooks(channel);
+		}
+		const webhook = await fetchChannelWebhooks(channel,readyClient.user.id);
 		relayWebhooks[config.Servers[key].relaychannel] = webhook;
 	}
 	
 	//Prepare status message.
-	if(config.StatusChannelID.length >= 16) {
-		const channel = client.channels.cache.get(config.StatusChannelID);
-		statusMessage = await fetchStatusChannel(channel,readyClient.user.id);
-		
-		const statustext = await generateStatusMessage();
-		statusMessage.edit(statustext);
-		debugLog("[STATUS] Status message updated.")
-		setInterval( async () => {
-			if(!statusMessage){
-				debugLog("[STATUS] Status message not found.");
-				return;
-			}
+	if(config.StatusChannelID && config.StatusChannelID.length >= 16) {
+		try{
+			const channel = client.channels.cache.get(config.StatusChannelID);
+			statusMessage = await fetchStatusChannel(channel,readyClient.user.id);
+			
 			const statustext = await generateStatusMessage();
 			statusMessage.edit(statustext);
-			debugLog("[STATUS] Status message updated.")
-		},config.StatusRefreshTime*1000);
+			debugLog("[STATUS] Status message updated.");
+			setInterval( async () => {
+				if(!statusMessage){
+					debugLog("[STATUS] Status message not found.");
+					return;
+				}
+				const statustext = await generateStatusMessage();
+				statusMessage.edit(statustext);
+				debugLog("[STATUS] Status message updated.");
+			},config.StatusRefreshTime*1000);
+		}catch(err){
+			debugLog("[STATUS] Status message failed to create (Probably invalid channel ID).");
+			console.error(err);
+		}
 	}
 	
 	console.log(`Bot started. Logged in as ${readyClient.user.tag}`);
