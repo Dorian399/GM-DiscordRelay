@@ -481,6 +481,9 @@ client.on(Events.MessageCreate, async message => {
 		debugLog('[MESSAGE] Message is over the max message length, trimming message.');
 		content = content.substring(0,config.MaxMessageLength);
 		message.react('✂');
+		if(config.AnnounceMessageTrim){
+			message.reply('Your message exceeds the '+config.MaxMessageLength+' character limit and has been cut off at "...'+content.substring(content.length-50,content.length)+'".');
+		}
 	}
 	
 	const usernameb64 = utf8ToBase64(username);
