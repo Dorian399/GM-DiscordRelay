@@ -32,8 +32,8 @@ const relayCommand = 'say_relay';
 
 // Specifies the users that can use commands.
 let usersWhitelist = {};
-for (const key in config.AllowedForRCON) {
-	usersWhitelist[config.AllowedForRCON[key]] = true;
+for (const key in config.AllowedForCommands) {
+	usersWhitelist[config.AllowedForCommands[key]] = true;
 }
 
 // Specifies the channel id's relations to specific servers for fast lookup when relaying messages and rcon commands.
@@ -43,10 +43,6 @@ for (const key in config.Servers) {
 	serverChannelIDs[ip_and_port] = config.Servers[key].relaychannel;
 	serverChannelIDs[config.Servers[key].relaychannel] = {ip: config.Servers[key].ip,port: config.Servers[key].port,password: config.Servers[key].password};
 }
-
-// List of commands that will be recognized as a RCON request.
-const rconAliases = [config.CommandPrefix+'rcon',config.CommandPrefix+'command',config.CommandPrefix+"c"];
-
 
 // Creates a log listener.
 const receiver = new SrcdsLogReceiver({
@@ -445,25 +441,27 @@ client.on(Events.MessageCreate, async message => {
 	const username = message.author.globalName;
 	let content = message.content;
 	
-	for(var i in rconAliases){
-		if(content.startsWith(rconAliases[i])){
-			debugLog('[MESSAGE] Command detected.\n');
-			if(!usersWhitelist[author]){
-				debugLog('[MESSAGE] User does not have permission to execute commands, skipping.\n');
+	if(Array.isArray(config.rconCommands)){
+		for(const i in config.rconCommands){
+			if(content.startsWith(config.CommandPrefix+config.rconCommands[i])){
+				debugLog('[MESSAGE] Command detected.\n');
+				if(!usersWhitelist[author]){
+					debugLog('[MESSAGE] User does not have permission to execute commands, skipping.\n');
+					return;
+				}
+				const command = content.substring(config.CommandPrefix.length+config.rconCommands[i].length, message.length).trim();
+				const reply = await message.reply('Executing command : '+command);
+				const result = await sendRCON(ip,port,pass,command);
+				debugLog('[MESSAGE] Command executed.');
+				if(!result || result.length <=0){
+					reply.edit('Command executed but returned no results.');
+					return;
+				}
+				reply.edit('```'+result.substring(0,1993)+'```');
 				return;
 			}
-			const command = content.substring(rconAliases[i].length, message.length).trim().replace('"',"'");
-			const reply = await message.reply('Executing command : '+command);
-			const result = await sendRCON(ip,port,pass,command);
-			debugLog('[MESSAGE] Command executed.');
-			if(!result || result.length <=0){
-				reply.edit('Command executed but returned no results.');
-				return;
-			}
-			reply.edit('```'+result.substring(0,1993)+'```');
-			return;
 		}
-	}
+	};
 	
 	if(!ip || !port || !username || !author || !message || !content){
 		debugLog('[MESSAGE] Invalid value detected (Either missing sender data, or invalid ip/port) ,skipping.\n');
