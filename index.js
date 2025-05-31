@@ -366,8 +366,13 @@ receiver.on('log', async (log) => {
 	let steamid = '';
 	const chatlog_match = message.match(/<[0-9]+><STEAM_[0-5]:[01]:\d+><Team>" (say|say_team) "/);
 	const luaerror_match = message.match(/^(?:\d{2}\/\d{2}\/\d{4} - \d{2}:\d{2}:\d{2}: )(Lua Error:\s*\n\[ERROR\][\s\S]*)$/m);
+	const custommessage_match = message.match(/<CustomRelayMessage><([^<>]*)><([^<>]*)>/);
+	
+	console.log(message);
 	
 	if(chatlog_match){ // Chat messages.
+	
+		debugLog('[LOG] Log is a chatlog.');
 	
 		const content_match = message.match(/^.*?"[^"]*<\d+><STEAM_0:[01]:\d+><[^>]+>"\s+say(?:_team)?\s+"(.*)"/);
 		if(!content_match || !content_match[1]){
@@ -378,13 +383,30 @@ receiver.on('log', async (log) => {
 		steamid = message.match(/STEAM_[0-5]:[01]:\d+/)[0].replace('<','').replace('>','');
 		content = content_match[1].replace('@','@ ');
 		
+		for(const val of config.MessagesStartsWithBlacklist.values()){
+			if(content.trim().startsWith(val)){
+				debugLog('[LOG] Chatlog starts with a character/string included in the blacklist, skipping.\n');
+				return;
+			}
+		}
+		
 	}else if(luaerror_match){ // Lua errors.
 	
-		if(!config.ShowLuaErrors)
+		if(!config.ShowLuaErrors){
+			debugLog('[LOG] Log does not match any of the criteria, skipping.\n');
 			return;
+		}
 		debugLog('[LOG] Log is a lua error.');
 		username = 'Lua Error';
 		content = luaerror_match[1];
+		
+	}else if(custommessage_match){ // Custom message.
+		
+		debugLog('[LOG] Log is a custom message.');
+		const usernameMatch = message.match(/<CustomRelayMessage><([^>]+)>/);
+		const contentMatch = message.match(/<CustomRelayMessage><[^>]+><([^>]+)>/);
+		username = atob(usernameMatch ? usernameMatch[1] : 'Tm9Vc2VybmFtZQ==');
+		content = atob(contentMatch ? contentMatch[1] : 'Tm9NZXNzYWdl');
 		
 	}else{ // Does not match anything.
 	
