@@ -59,7 +59,8 @@ Result:
 #### Setting up the GMod server.
 1. Open your `server.cfg` in a text editor.
 2. Add these commands to your `server.cfg`:
-```log on
+```
+log on
 logaddress_add IP:PORT
 sv_logecho 0
 ```
