@@ -43,7 +43,9 @@ Result:
 6. Add the bot to your server.
 7. After adding the bot to your server, go back to your bot's page and enter the "Bot" tab of your bot.
 8. Click the "Reset Token" button and then copy the newly generated token.
+
 ![image](https://github.com/user-attachments/assets/d7484d11-7ac7-44f2-ba94-61aded0f3392)
+
 9. Save the token for later, as you will need it in later steps.
 10. Head over to (https://steamcommunity.com/dev/apikey).
 11. Create an API key and then copy and save it for later.
