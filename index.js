@@ -368,8 +368,6 @@ receiver.on('log', async (log) => {
 	const luaerror_match = message.match(/^(?:\d{2}\/\d{2}\/\d{4} - \d{2}:\d{2}:\d{2}: )(Lua Error:\s*\n\[ERROR\][\s\S]*)$/m);
 	const custommessage_match = message.match(/<CustomRelayMessage><([^<>]*)><([^<>]*)>/);
 	
-	console.log(message);
-	
 	if(chatlog_match){ // Chat messages.
 	
 		debugLog('[LOG] Log is a chatlog.');
