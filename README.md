@@ -51,9 +51,10 @@ Result:
 11. Create an API key and then copy and save it for later.
 12. Clone this repository with the ```git clone https://github.com/Dorian399/GM-DiscordRelay.git``` command.
 13. Go to the repo's main directory. (```cd "GM-DiscordRelay"```).
-14. Edit the `config.cjs` file in a text editor and configure everything to your liking.
-15. If you have any trouble figuring what to put as the channel ID's or User ID's, you can follow [this guide](https://docs.statbot.net/docs/faq/general/how-find-id/) to find those.
-16. Everything is set up, you can launch the bot using ```node index.js```.
+14. Run `npm install` to install all the required dependencies.
+15. Edit the `config.cjs` file in a text editor and configure everything to your liking.
+16. If you have any trouble figuring what to put as the channel ID's or User ID's, you can follow [this guide](https://docs.statbot.net/docs/faq/general/how-find-id/) to find those.
+17. Everything is set up, you can launch the bot using ```node index.js```.
 
 #### Setting up the GMod server.
 1. Open your `server.cfg` in a text editor.
