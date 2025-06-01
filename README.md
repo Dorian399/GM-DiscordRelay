@@ -19,7 +19,7 @@ It can also show your server's status.
 - Node.js v16 or higher.
 
 ## For developers
-The relay also supports sending custom messages from your GMOD server.
+The relay also supports sending custom messages from your GMod server.
 This can be useful for implementing gamemode specific functionality to the relay.
 In order to send a custom message you can use the ```SendRelayMessage(string,string)``` function.
 Example usage:
