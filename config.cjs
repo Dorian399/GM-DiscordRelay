@@ -13,6 +13,9 @@ exports.RelayPort = 9871;
 // How often the status message should refresh (in seconds).
 exports.StatusRefreshTime = 30;
 
+// Show latest activity. This will add an additional line to the status message indicating the last time your server had any players, provided it is currently empty.
+exports.ShowLastActivity = false;
+
 // The maximum length for a message. (This only applies to Discord messages.)
 exports.MaxMessageLength = 512;
 
