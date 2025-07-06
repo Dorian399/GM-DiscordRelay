@@ -26,6 +26,7 @@ import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { SrcdsLogReceiver } from '@srcds/log-receiver';
 import query from 'source-server-query';
 import Rcon from 'rcon';
+import fs from 'node:fs';
 const config = await import('./config.cjs'); 
 const relayCommand = 'say_relay';
 
@@ -58,6 +59,46 @@ for(const key in config.Servers){
 	serversToAdd.push({hostname:config.Servers[key].ip, port:config.Servers[key].port});
 }
 receiver.addServers(serversToAdd);
+
+// Gathers persistent data about last activity
+let lastActivities = {};
+async function readLastActivity(id){
+	debugLog('\n[ACTIVITY] Fetching last activity for '+id+'.');
+	if(typeof lastActivities[id] === 'number'){
+		debugLog('[ACTIVITY] Retrieved from cached value.');
+		return lastActivities[id];
+	}
+	debugLog('[ACTIVITY] Reading from JSON.');
+	if(!fs.existsSync('.activityData.json')){
+		debugLog('[ACTIVITY] JSON file not found aborting.');
+		return;
+	}
+	const fileData = await fs.promises.readFile('.activityData.json', 'utf-8');
+	try{
+		const activityData = JSON.parse(fileData);
+		lastActivities = activityData;
+		debugLog('[ACTIVITY] JSON parsed sucessfully.');
+		if(typeof lastActivities[id] === 'number'){
+			debugLog('[ACTIVITY] Value retrieved sucessfully.\n\n');
+			return lastActivities[id];
+		}else{
+			debugLog('[ACTIVITY] Could not retrieve value.\n\n');
+		}
+	}catch(e){
+		debugLog('[ACTIVITY] Failed to parse the JSON file.\n\n');
+		return;
+	}
+	debugLog('[ACTIVITY] Could not retrieve value.\n\n');
+	return;
+}
+
+function writeLastActivity(id){
+	debugLog("\n[ACTIVITY] Writing activity for "+id+".\n\n");
+	lastActivities[id] = Math.floor(Date.now()/1000);
+	const jsonData = JSON.stringify(lastActivities,null,2);
+	fs.writeFileSync(".activityData.json",jsonData);
+}
+
 
 // Create a new client instance.
 const client = new Client({ intents: [
@@ -225,7 +266,7 @@ async function generateStatusMessage() {
 	let completeMessage = '';
 	let serverMessage;
 	debugLog("[STATUS] Fetching servers info.");
-	for (const server of Object.values(config.Servers)) {
+	for (const [id, server] of Object.entries(config.Servers)) {
 		const { ip,publicip,port } = server;
 		serverMessage='';
 		try{
@@ -237,8 +278,21 @@ async function generateStatusMessage() {
 			const separator = '|';
 			
 			serverMessage = `**${info.name}**
-			[${publicip}:${port}](https://vauff.com/connect.php?ip=${publicip}:${port})
-			**${info.players}** ${info.players == 1 ? 'person is' : 'people are'} playing on map **${info.map}**`.replace(/^\t+/gm, '');
+			[${publicip}:${port}](https://vauff.com/connect.php?ip=${publicip}:${port})`.replace(/^\t+/gm, '');
+			
+			// Show/Write last activity.
+			if(config.ShowLastActivity){
+				if(info.players <= 0){
+					const timestamp = await readLastActivity(id);
+					if(timestamp){
+						serverMessage = serverMessage+`\nLast activity: <t:${timestamp}:R>`;
+					}
+				}else{
+					writeLastActivity(id);
+				}
+			}
+			
+			serverMessage = serverMessage + `\n**${info.players}** ${info.players == 1 ? 'person is' : 'people are'} playing on map **${info.map}**`;
 			
 			if(info.players == 0){
 				serverMessage=serverMessage+'\n\n';
